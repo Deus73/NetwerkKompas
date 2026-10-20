@@ -45,3 +45,10 @@ Zonder opt-in staan resultaten alleen in het tabbladgeheugen. Met lokaal bewaren
 De service worker bewaart alleen appbestanden. `probe.json`, externe aanvragen en aanvragen met queryparameters gaan altijd naar het netwerk. Offline beschikbaarheid is geen succesvolle internetmeting. Nieuwe service-worker-versies activeren nadat oude appvensters zijn gesloten.
 
 Zie [CHANGELOG.md](CHANGELOG.md) en [VERSION](VERSION).
+
+
+## Screenshots
+
+![NetwerkKompas Overview](screenshots/overview.png)
+
+![NetwerkKompas Mobile](screenshots/mobile.png)
