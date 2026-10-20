@@ -1,6 +1,12 @@
 # Changelog
 
+## 2.1.0 — 2026-10-20
+- Dark mode met systeemvoorkeurdetectie en handmatige toggle
+- Verbeterde mobiele lay-out en toegankelijkheid
+- Kleine UI-verbeteringen voor betere leesbaarheid
+
 ## 2.0.0 — 2026-10-20
+ — 2026-10-20
 - Publieke hosting op GitHub Pages vanuit `main/docs`.
 - Installeerbare PWA met offline storingshulp; meetverzoeken worden nooit gecachet.
 - Monitoring: 5, 15 of 30 minuten; 10, 30 of 60 seconden tussen meetrondes.

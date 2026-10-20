@@ -1,4 +1,4 @@
-# NetwerkKompas · v2.0.0
+# NetwerkKompas · v2.1.0
 
 Een Nederlandstalige webapp die je helpt internetproblemen te onderzoeken. Geen installatie of account nodig. Werkt op desktop en mobiel.
 
@@ -6,8 +6,10 @@ Een Nederlandstalige webapp die je helpt internetproblemen te onderzoeken. Geen 
 
 Open de GitHub Pages-link bij **About** in deze repository. Klik op **Start verbindingscheck** of kies je klacht bij **Storingshulp**.
 
-## Nieuw in 2.0.0
+## Nieuw in 2.1.0
 
+- Dark mode met automatische voorkeurdetectie en toggle
+- Verbeterde mobiele weergave en toegankelijkheid
 - Installeerbaar als PWA op ondersteunde browsers; offline storingshulp na een eerste succesvol bezoek.
 - Monitoring van 5, 15 of 30 minuten met instelbaar interval.
 - Verbindingslabels voor vergelijken van wifi, netwerkkabel, mobiele data en VPN.

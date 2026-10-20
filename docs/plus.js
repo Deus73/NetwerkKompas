@@ -16,3 +16,27 @@ setInterval(()=>{if(state.monitor){const remaining=Math.max(0,Math.ceil((state.d
 document.addEventListener('visibilitychange',()=>{if(state.monitor){state.events.push({time:new Date().toISOString(),event:document.hidden?'App naar achtergrond; metingen kunnen worden vertraagd.':'App weer op voorgrond.'});updatePlus();}});
 let installPrompt=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;say('installStatus','Je kunt NetwerkKompas als app installeren.');});$('install').onclick=async()=>{if(installPrompt){await installPrompt.prompt();const choice=await installPrompt.userChoice;say('installStatus',choice.outcome==='accepted'?'Installatie aangevraagd.':'Installatie overgeslagen.');installPrompt=null;}else{say('installStatus','Chrome/Edge: browsermenu → App installeren. iPhone/iPad: Safari → Deel → Zet op beginscherm. De optie verschijnt alleen als je browser installatie ondersteunt.');}};
 if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').then(()=>{say('installStatus','Offline storingshulp wordt voorbereid. Metingen hebben internet nodig.');}).catch(()=>{say('installStatus','Offline opslag is niet beschikbaar. Online werkt de app gewoon.');});}
+
+// Dark mode toggle
+function initTheme(){
+  const saved = localStorage.getItem('netwerkkompas-theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = saved || (prefersDark ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.createElement('button');
+  btn.id = 'themeToggle';
+  btn.textContent = theme === 'dark' ? '☀️ Licht' : '🌙 Donker';
+  btn.style.marginLeft = '10px';
+  btn.onclick = () => {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('netwerkkompas-theme', next);
+    btn.textContent = next === 'dark' ? '☀️ Licht' : '🌙 Donker';
+  };
+  const actions = document.querySelector('.actions');
+  if(actions && !document.getElementById('themeToggle')){
+    actions.appendChild(btn);
+  }
+}
+initTheme();
