@@ -247,3 +247,283 @@ if(document.readyState === 'loading'){
 } else {
   addAdvancedSection();
 }
+
+// Klachten indienen bij Nederlandse internetproviders
+function addComplaintSection(){
+  if(document.getElementById('klachten')) return;
+  const main = document.querySelector('main');
+  const section = document.createElement('section');
+  section.className = 'panel';
+  section.id = 'klachten';
+  section.innerHTML = `
+    <div class="sectionhead"><div><h2>Klachten indienen bij Nederlandse providers</h2><p>Genereer een klacht op basis van je meetresultaten en dien direct in</p></div><span class="pill">Geautomatiseerd</span></div>
+    <div class="panel" style="background:#fff3cd;border-color:#ffc107;margin-bottom:15px">
+      <strong>Tip:</strong> Voeg je meetresultaten toe voor een sterkere klacht. Gebruik de meetrapporten uit het tabblad "Meetrapport".
+    </div>
+    <div class="columns">
+      <section class="panel">
+        <h3>Kies je provider</h3>
+        <select id="providerSelect" style="width:100%;margin-bottom:10px">
+          <option value="">Selecteer provider...</option>
+          <optgroup label="Grote providers">
+            <option value="kpn">KPN</option>
+            <option value="ziggo">Ziggo (VodafoneZiggo)</option>
+            <option value="vodafone">Vodafone</option>
+            <option value="tmobile">T-Mobile</option>
+            <option value="odido">Odido</option>
+          </optgroup>
+          <optgroup label="Regionale providers">
+            <option value="delta">Delta</option>
+            <option value="caiw">CAIW</option>
+            <option value="kabelnoord">Kabelnoord</option>
+            <option value="stichtingkabeltexel">Kabel Texel</option>
+            <option value="solcon">Solcon</option>
+            <option value="youfone">Youfone</option>
+            <option value="ben">BEN</option>
+            <option value="leape">Leaphone / andere</option>
+          </optgroup>
+        </select>
+        <label>Type storing</label>
+        <select id="complaintType" style="width:100%;margin-bottom:10px">
+          <option value="slow">Trage verbinding</option>
+          <option value="drops">Verbinding valt weg</option>
+          <option value="offline">Geen internet</option>
+          <option value="other">Anders</option>
+        </select>
+        <label>Klacht omschrijving</label>
+        <textarea id="complaintText" rows="6" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:7px;font-family:inherit" placeholder="Beschrijf je probleem..."></textarea>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px">
+          <input type="checkbox" id="includeMeasurements" checked> Voeg meetresultaten toe aan klacht
+        </label>
+        <button id="generateComplaint" style="margin-top:10px;width:100%" class="primary">Genereer klacht</button>
+      </section>
+      <section class="panel">
+        <h3>Contactgegevens provider</h3>
+        <div id="providerInfo" style="font-size:13px;line-height:1.8">
+          <p style="color:#666">Selecteer een provider om contactgegevens te zien</p>
+        </div>
+        <div id="complaintOutput" style="margin-top:15px;display:none">
+          <h4>Gegenereerde klacht</h4>
+          <textarea id="complaintResult" rows="12" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:7px;font-family:inherit;font-size:12px"></textarea>
+          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button id="copyComplaint">Kopieer klacht</button>
+            <button id="openForm">Open klachtenformulier</button>
+            <button id="sendEmail">Verstuur via e-mail</button>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="panel">
+      <h3>ACM & Geschillencommissie</h3>
+      <p style="font-size:13px">Als je provider niet adequaat reageert kun je hulp inschakelen:</p>
+      <ul style="font-size:13px;line-height:1.8">
+        <li><strong>ACM ConsuWijzer:</strong> <a href="https://www.consuwijzer.nl/" target="_blank">consuwijzer.nl</a> - Gratis hulp bij geschillen met telecomproviders</li>
+        <li><strong>Geschillencommissie Telecommunicatie:</strong> Voor bindende geschillen onder bepaalde voorwaarden</li>
+        <li><strong>Autoriteit Consument & Markt (ACM):</strong> Meld excessieve vertragingen of contractbreuk</li>
+      </ul>
+    </div>
+  `;
+  document.querySelector('footer').before(section);
+  
+  // Add nav link
+  if(!document.querySelector('nav a[href="#klachten"]')){
+    const nav = document.querySelector('nav');
+    const a = document.createElement('a');
+    a.href = '#klachten';
+    a.innerHTML = '📢 <span>Klachten</span>';
+    nav.appendChild(a);
+  }
+  
+  const providers = {
+    kpn: {
+      name: 'KPN',
+      form: 'https://www.kpn.com/klantenservice/contact/klacht-indienen.htm',
+      email: 'klachten@kpn.com',
+      phone: '0800 0444',
+      info: '<strong>Klachtenlijn:</strong> 0800 0444<br><strong>Online:</strong> Via KPN klantenservice<br><strong>Tip:</strong> Gebruik eerst je MijnKPN account'
+    },
+    ziggo: {
+      name: 'Ziggo',
+      form: 'https://www.ziggo.nl/klantenservice/contact/klacht',
+      email: 'klachten@ziggo.nl',
+      phone: '0800 0944',
+      info: '<strong>Klachtenlijn:</strong> 0800 0944<br><strong>Online:</strong> Via MijnZiggo<br><strong>Tip:</strong> Voeg storingsnummer toe indien bekend'
+    },
+    vodafone: {
+      name: 'Vodafone',
+      form: 'https://www.vodafone.nl/klantenservice/contact/klacht-indienen',
+      email: 'klachten@vodafone.nl',
+      phone: '0800 0700',
+      info: '<strong>Klachtenlijn:</strong> 0800 0700<br><strong>Online:</strong> Via Vodafone klantenservice'
+    },
+    tmobile: {
+      name: 'T-Mobile',
+      form: 'https://www.t-mobile.nl/klantenservice/contact/klacht-indienen',
+      email: 'klachten@t-mobile.nl',
+      phone: '0800 0333',
+      info: '<strong>Klachtenlijn:</strong> 0800 0333<br><strong>Online:</strong> Via MijnT-Mobile'
+    },
+    odido: {
+      name: 'Odido',
+      form: 'https://www.odido.nl/klantenservice/contact/klacht',
+      email: 'klachten@odido.nl',
+      phone: '0800 0202',
+      info: '<strong>Klachtenlijn:</strong> 0800 0202<br><strong>Online:</strong> Via Odido klantenservice'
+    },
+    delta: {
+      name: 'Delta',
+      form: 'https://www.delta.nl/klantenservice/klacht-indienen',
+      email: 'klachten@delta.nl',
+      phone: '088 366 0000',
+      info: '<strong>Telefoon:</strong> 088 366 0000<br><strong>Online:</strong> Via Delta klantenservice'
+    },
+    caiw: {
+      name: 'CAIW',
+      form: 'https://www.caiw.nl/contact/klacht',
+      email: 'klachten@caiw.nl',
+      phone: '075 621 2121',
+      info: '<strong>Telefoon:</strong> 075 621 2121'
+    },
+    kabelnoord: {
+      name: 'Kabelnoord',
+      form: 'https://www.kabelnoord.nl/klantenservice/klacht',
+      email: 'klachten@kabelnoord.nl',
+      phone: '0591 696 000',
+      info: '<strong>Telefoon:</strong> 0591 696 000'
+    },
+    solcon: {
+      name: 'Solcon',
+      form: 'https://www.solcon.nl/contact/klacht-indienen',
+      email: 'klachten@solcon.nl',
+      phone: '0570 660 000',
+      info: '<strong>Telefoon:</strong> 0570 660 000'
+    },
+    youfone: {
+      name: 'Youfone',
+      form: 'https://www.youfone.nl/service/contact',
+      email: 'klachten@youfone.nl',
+      phone: '085 888 0000',
+      info: '<strong>Telefoon:</strong> 085 888 0000'
+    },
+    ben: {
+      name: 'BEN',
+      form: 'https://www.ben.nl/service/contact',
+      email: 'klachten@ben.nl',
+      phone: '0800 023 23 23',
+      info: '<strong>Telefoon:</strong> 0800 023 23 23'
+    },
+    leape: {
+      name: 'Andere provider',
+      form: '#',
+      email: '',
+      phone: '',
+      info: '<strong>Tip:</strong> Kijk op je factuur of website van je provider voor het juiste klachtenkanaal'
+    }
+  };
+  
+  document.getElementById('providerSelect').onchange = ()=>{
+    const val = document.getElementById('providerSelect').value;
+    const infoDiv = document.getElementById('providerInfo');
+    if(!val || !providers[val]){
+      infoDiv.innerHTML = '<p style="color:#666">Selecteer een provider om contactgegevens te zien</p>';
+      return;
+    }
+    const p = providers[val];
+    infoDiv.innerHTML = `
+      <strong>${p.name}</strong><br><br>
+      ${p.info}<br><br>
+      ${p.email ? '<strong>E-mail:</strong> ' + p.email + '<br>' : ''}
+      ${p.phone ? '<strong>Telefoon:</strong> ' + p.phone + '<br>' : ''}
+      ${p.form && p.form !== '#' ? '<a href="'+p.form+'" target="_blank">Open klachtenformulier →</a>' : ''}
+    `;
+    infoDiv.dataset.form = p.form;
+    infoDiv.dataset.email = p.email;
+    infoDiv.dataset.name = p.name;
+  };
+  
+  document.getElementById('generateComplaint').onclick = ()=>{
+    const provider = document.getElementById('providerSelect').value;
+    const type = document.getElementById('complaintType').value;
+    const userText = document.getElementById('complaintText').value;
+    const includeMeas = document.getElementById('includeMeasurements').checked;
+    
+    if(!provider){
+      alert('Selecteer eerst een provider');
+      return;
+    }
+    
+    const pName = providers[provider].name;
+    const typeText = {
+      slow: 'trage verbinding / niet bereikende snelheden',
+      drops: 'regelmatig wegvallende verbinding',
+      offline: 'geen internetverbinding',
+      other: 'netwerkprobleem'
+    };
+    
+    let complaint = `Betreft: Klacht over internetverbinding - ${typeText[type]}\n\n`;
+    complaint += `Beste ${pName},\n\n`;
+    complaint += `Ik schrijf u naar aanleiding van aanhoudende problemen met mijn internetverbinding.\n\n`;
+    if(userText){
+      complaint += `Omschrijving van het probleem:\n${userText}\n\n`;
+    }
+    complaint += `Probleem: ${typeText[type]}\n\n`;
+    
+    if(includeMeas && state.runs && state.runs.length > 0){
+      complaint += `Meetresultaten (via NetwerkKompas):\n`;
+      const last = state.runs[state.runs.length-1];
+      complaint += `- Datum/tijd: ${new Date(last.time).toLocaleString('nl-NL')}\n`;
+      complaint += `- HTTP mediaan: ${last.median || 'n/b'} ms\n`;
+      complaint += `- Geslaagde checks: ${last.probes.filter(p=>p.ok).length}/${last.probes.length}\n`;
+      complaint += `- Verbindingslabel: ${last.label || 'Onbekend'}\n`;
+      complaint += `\nIk heb deze metingen zelf uitgevoerd met een onafhankelijke meettool om de problemen te documenteren.\n\n`;
+    }
+    
+    complaint += `Ik verzoek u om dit probleem te onderzoeken en op te lossen binnen een redelijke termijn.\n`;
+    complaint += `Indien het probleem niet binnen 14 dagen is opgelost, verzoek ik u om dit formeel op te nemen als klacht en mij te informeren over de voortgang.\n\n`;
+    complaint += `Met vriendelijke groet,\n[Uw volledige naam]\n[Uw adres]\n[Uw postcode en plaats]\n[Uw klantnummer]\n[Uw e-mailadres]\n[Uw telefoonnummer]`;
+    
+    document.getElementById('complaintResult').value = complaint;
+    document.getElementById('complaintOutput').style.display = 'block';
+    document.getElementById('complaintOutput').scrollIntoView({behavior:'smooth', block:'nearest'});
+  };
+  
+  document.getElementById('copyComplaint').onclick = async ()=>{
+    const text = document.getElementById('complaintResult').value;
+    try {
+      await navigator.clipboard.writeText(text);
+      document.getElementById('copyComplaint').textContent = 'Gekopieerd!';
+      setTimeout(()=>document.getElementById('copyComplaint').textContent='Kopieer klacht', 2000);
+    } catch(e){
+      alert('Kopieer handmatig');
+    }
+  };
+  
+  document.getElementById('openForm').onclick = ()=>{
+    const infoDiv = document.getElementById('providerInfo');
+    const form = infoDiv.dataset.form;
+    if(form && form !== '#'){
+      window.open(form, '_blank');
+    } else {
+      alert('Geen online formulier beschikbaar voor deze provider');
+    }
+  };
+  
+  document.getElementById('sendEmail').onclick = ()=>{
+    const infoDiv = document.getElementById('providerInfo');
+    const email = infoDiv.dataset.email;
+    const text = document.getElementById('complaintResult').value;
+    if(email){
+      const subject = encodeURIComponent('Klacht internetverbinding');
+      const body = encodeURIComponent(text);
+      window.location.href = 'mailto:' + email + '?subject=' + subject + '&body=' + body;
+    } else {
+      alert('Geen e-mailadres beschikbaar voor deze provider');
+    }
+  };
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', addComplaintSection);
+} else {
+  addComplaintSection();
+}
