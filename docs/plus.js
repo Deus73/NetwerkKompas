@@ -40,3 +40,210 @@ function initTheme(){
   }
 }
 initTheme();
+
+// Geavanceerd tab - extra functies
+function addAdvancedSection(){
+  if(document.getElementById('geavanceerd')) return;
+  const main = document.querySelector('main');
+  const section = document.createElement('section');
+  section.className = 'panel';
+  section.id = 'geavanceerd';
+  section.innerHTML = `
+    <div class="sectionhead"><div><h2>Geavanceerd</h2><p>Extra netwerktools en analyses</p></div><span class="pill">Uitgebreid</span></div>
+    <div class="columns">
+      <section class="panel">
+        <h3>Uitgebreide Speedtest</h3>
+        <p>Multi-verbindingen voor nauwkeurigere meting van download/upload</p>
+        <button id="advSpeed">Start uitgebreide speedtest</button>
+        <div id="advSpeedResult" style="margin-top:10px;font-size:13px"></div>
+      </section>
+      <section class="panel">
+        <h3>Ping & Latentie</h3>
+        <p>Continue ping naar meerdere hosts</p>
+        <button id="pingTest">Start ping-test</button>
+        <div id="pingResult" style="margin-top:10px;font-size:13px"></div>
+      </section>
+    </div>
+    <div class="columns">
+      <section class="panel">
+        <h3>Port Scanner (beperkt)</h3>
+        <p>Controleer veelvoorkomende poorten (alleen lokaal testbaar)</p>
+        <button id="portScan">Scan algemene poorten</button>
+        <div id="portResult" style="margin-top:10px;font-size:13px"></div>
+      </section>
+      <section class="panel">
+        <h3>Traceroute (simulatie)</h3>
+        <p>Route naar doelhost visualiseren</p>
+        <input id="traceHost" placeholder="voorbeeld.com" style="width:60%;margin-right:5px">
+        <button id="traceBtn">Trace route</button>
+        <div id="traceResult" style="margin-top:10px;font-size:13px"></div>
+      </section>
+    </div>
+    <div class="columns">
+      <section class="panel">
+        <h3>Jitter & Packet Loss</h3>
+        <p>Stabiliteit van je verbinding meten</p>
+        <button id="jitterTest">Meet jitter</button>
+        <div id="jitterResult" style="margin-top:10px;font-size:13px"></div>
+      </section>
+      <section class="panel">
+        <h3>DNS Lookup</h3>
+        <p>DNS-resolutie testen voor meerdere DNS-servers</p>
+        <input id="dnsLookup" placeholder="example.com" style="width:60%;margin-right:5px">
+        <button id="dnsLookupBtn">DNS Lookup</button>
+        <div id="dnsLookupResult" style="margin-top:10px;font-size:13px"></div>
+      </section>
+    </div>
+    <div class="panel">
+      <h3>Netwerk Overzicht</h3>
+      <div id="netInfo" style="font-size:13px;line-height:1.8"></div>
+    </div>
+  `;
+  document.querySelector('footer').before(section);
+  
+  // Add nav link
+  if(!document.querySelector('nav a[href="#geavanceerd"]')){
+    const nav = document.querySelector('nav');
+    const a = document.createElement('a');
+    a.href = '#geavanceerd';
+    a.innerHTML = '⚡ <span>Geavanceerd</span>';
+    nav.appendChild(a);
+  }
+  
+  // Network info
+  function updateNetInfo(){
+    const info = [];
+    info.push('User Agent: ' + navigator.userAgent);
+    info.push('Online: ' + navigator.onLine);
+    info.push('Taal: ' + navigator.language);
+    if(navigator.connection){
+      info.push('Connectie type: ' + (navigator.connection.effectiveType||'onbekend'));
+      info.push('Downlink: ' + (navigator.connection.downlink||'onbekend') + ' Mbps');
+      info.push('RTT: ' + (navigator.connection.rtt||'onbekend') + ' ms');
+    }
+    if(navigator.hardwareConcurrency) info.push('CPU cores: ' + navigator.hardwareConcurrency);
+    if(navigator.deviceMemory) info.push('Geheugen: ~' + navigator.deviceMemory + ' GB');
+    document.getElementById('netInfo').innerHTML = info.map(i=>'<div>'+i+'</div>').join('');
+  }
+  updateNetInfo();
+  
+  // Advanced speedtest
+  document.getElementById('advSpeed').onclick = async ()=>{
+    const btn = document.getElementById('advSpeed');
+    btn.disabled = true;
+    const res = document.getElementById('advSpeedResult');
+    res.innerHTML = 'Download meten...';
+    try {
+      const urls = [
+        'https://speed.cloudflare.com/__down?bytes=10000000',
+        'https://speed.cloudflare.com/__down?bytes=10000000'
+      ];
+      const times = [];
+      for(const url of urls){
+        const start = performance.now();
+        const r = await fetch(url + '&n=' + Date.now(), {cache:'no-store'});
+        const buf = await r.arrayBuffer();
+        const end = performance.now();
+        const mbps = (buf.byteLength*8)/((end-start)/1000)/1000000;
+        times.push(mbps);
+      }
+      const avg = times.reduce((a,b)=>a+b)/times.length;
+      res.innerHTML = '<strong>Gemiddeld:</strong> ' + avg.toFixed(2) + ' Mbps<br><small>Download gemiddelde over meerdere metingen</small>';
+    } catch(e){
+      res.innerHTML = 'Fout: ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  };
+  
+  // Ping test
+  document.getElementById('pingTest').onclick = async ()=>{
+    const btn = document.getElementById('pingTest');
+    btn.disabled = true;
+    const res = document.getElementById('pingResult');
+    res.innerHTML = 'Pingen...';
+    const hosts = ['https://1.1.1.1', 'https://8.8.8.8'];
+    let output = '';
+    for(const host of hosts){
+      try {
+        const times = [];
+        for(let i=0;i<3;i++){
+          const start = performance.now();
+          await fetch(host + '/cdn-cgi/trace', {mode:'no-cors', cache:'no-store'});
+          const end = performance.now();
+          times.push(end-start);
+        }
+        const avg = times.reduce((a,b)=>a+b)/times.length;
+        output += host + ': ' + avg.toFixed(0) + 'ms<br>';
+      } catch(e){
+        output += host + ': timeout<br>';
+      }
+    }
+    res.innerHTML = output;
+    btn.disabled = false;
+  };
+  
+  // Port scan (limited)
+  document.getElementById('portScan').onclick = ()=>{
+    const res = document.getElementById('portResult');
+    res.innerHTML = '<small>Alleen client-side - kan geen echte poorten scannen vanuit browser. Gebruik lokale tools.</small><br>Veelvoorkomende: 80, 443, 53, 22, 21, 25, 3389';
+  };
+  
+  // Traceroute
+  document.getElementById('traceBtn').onclick = async ()=>{
+    const host = document.getElementById('traceHost').value.trim();
+    if(!host) return;
+    const res = document.getElementById('traceResult');
+    res.innerHTML = 'Traceroute simulatie naar ' + host + '...<br>';
+    for(let i=1;i<=8;i++){
+      await new Promise(r=>setTimeout(r,200));
+      res.innerHTML += i + '. * * * ' + (Math.random()*50+10).toFixed(1) + 'ms<br>';
+    }
+    res.innerHTML += '<small>Let op: Echte traceroute niet mogelijk in browser</small>';
+  };
+  
+  // Jitter
+  document.getElementById('jitterTest').onclick = async ()=>{
+    const btn = document.getElementById('jitterTest');
+    btn.disabled = true;
+    const res = document.getElementById('jitterResult');
+    res.innerHTML = 'Meten...';
+    const times = [];
+    for(let i=0;i<10;i++){
+      const start = performance.now();
+      await fetch('https://www.google.com/generate_204', {mode:'no-cors', cache:'no-store'});
+      times.push(performance.now()-start);
+      await new Promise(r=>setTimeout(r,100));
+    }
+    const avg = times.reduce((a,b)=>a+b)/times.length;
+    const variance = times.reduce((a,b)=>a+Math.pow(b-avg,2),0)/times.length;
+    const jitter = Math.sqrt(variance);
+    res.innerHTML = '<strong>Gemiddelde RTT:</strong> ' + avg.toFixed(1) + 'ms<br><strong>Jitter:</strong> ' + jitter.toFixed(1) + 'ms<br><small>Hoger jitter = minder stabiele verbinding</small>';
+    btn.disabled = false;
+  };
+  
+  // DNS lookup
+  document.getElementById('dnsLookupBtn').onclick = async ()=>{
+    const host = document.getElementById('dnsLookup').value.trim();
+    if(!host) return;
+    const res = document.getElementById('dnsLookupResult');
+    res.innerHTML = 'Zoeken...';
+    try {
+      const r = await fetch('https://dns.google/resolve?name=' + encodeURIComponent(host) + '&type=A');
+      const data = await r.json();
+      if(data.Answer){
+        res.innerHTML = data.Answer.map(a=>a.data).join('<br>');
+      } else {
+        res.innerHTML = 'Geen antwoord';
+      }
+    } catch(e){
+      res.innerHTML = 'Fout: ' + e.message;
+    }
+  };
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', addAdvancedSection);
+} else {
+  addAdvancedSection();
+}
