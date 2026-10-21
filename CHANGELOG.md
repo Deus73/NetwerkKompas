@@ -5,16 +5,20 @@
 - Verbeterde mobiele lay-out en toegankelijkheid
 - Kleine UI-verbeteringen voor betere leesbaarheid
 
-## 2.0.0 — 2026-10-20
- — 2026-10-20
-- Publieke hosting op GitHub Pages vanuit `main/docs`.
-- Installeerbare PWA met offline storingshulp; meetverzoeken worden nooit gecachet.
-- Monitoring: 5, 15 of 30 minuten; 10, 30 of 60 seconden tussen meetrondes.
-- Labels voor wifi, kabel, mobiele data en VPN.
-- Samenvatting van HTTP-responstijden en succesvolle externe meetrondes.
-- Storingslogboek met automatische gebeurtenissen en handmatige notities.
-- Optioneel lokaal bewaren, CSV/JSON-export en afdrukbaar rapport.
-- App-iconen, versiegegevens en documentatie.
+# Changelog
 
-## 1.0.0 — 2026-10-20
-- Eerste versie met HTTP-metingen, DNS-check, downloadindicatie en storingshulp.
+## 2.2.0 — 2026-10-21
+- Nieuw tabblad "Geavanceerd" met extra netwerktools
+- Uitgebreide speedtest met meerdere verbindingen
+- Ping-test naar belangrijke DNS-servers
+- Jitter en packet loss meting
+- DNS lookup via Google DNS
+- Traceroute simulatie
+- Netwerkinformatie overzicht
+
+## 2.1.0 — 2026-10-20
+- Dark mode met systeemvoorkeurdetectie en handmatige toggle
+- Verbeterde mobiele lay-out en toegankelijkheid
+- Kleine UI-verbeteringen voor betere leesbaarheid
+
+## 2.0.0 — 2026-10-20
