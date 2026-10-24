@@ -17,513 +17,499 @@ document.addEventListener('visibilitychange',()=>{if(state.monitor){state.events
 let installPrompt=null;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installPrompt=e;say('installStatus','Je kunt NetwerkKompas als app installeren.');});$('install').onclick=async()=>{if(installPrompt){await installPrompt.prompt();const choice=await installPrompt.userChoice;say('installStatus',choice.outcome==='accepted'?'Installatie aangevraagd.':'Installatie overgeslagen.');installPrompt=null;}else{say('installStatus','Chrome/Edge: browsermenu → App installeren. iPhone/iPad: Safari → Deel → Zet op beginscherm. De optie verschijnt alleen als je browser installatie ondersteunt.');}};
 if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').then(()=>{say('installStatus','Offline storingshulp wordt voorbereid. Metingen hebben internet nodig.');}).catch(()=>{say('installStatus','Offline opslag is niet beschikbaar. Online werkt de app gewoon.');});}
 
-// Dark mode toggle
+// ---------- Thema ----------
 function initTheme(){
-  const saved = localStorage.getItem('netwerkkompas-theme');
-  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const theme = saved || (prefersDark ? 'dark' : 'light');
-  document.documentElement.setAttribute('data-theme', theme);
-  const btn = document.createElement('button');
-  btn.id = 'themeToggle';
-  btn.textContent = theme === 'dark' ? '☀️ Licht' : '🌙 Donker';
-  btn.style.marginLeft = '10px';
-  btn.onclick = () => {
-    const current = document.documentElement.getAttribute('data-theme') || 'light';
-    const next = current === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('netwerkkompas-theme', next);
-    btn.textContent = next === 'dark' ? '☀️ Licht' : '🌙 Donker';
+  const mq=window.matchMedia?.('(prefers-color-scheme: dark)');
+  const stored=()=>{try{const value=localStorage.getItem('netwerkkompas-theme');return value==='dark'||value==='light'?value:null;}catch{return null;}};
+  const apply=theme=>{
+    document.documentElement.setAttribute('data-theme',theme);
+    document.documentElement.style.colorScheme=theme;
+    const btn=$('themeToggle');
+    if(btn){
+      btn.textContent=theme==='dark'?'☀️ Licht':'🌙 Donker';
+      btn.setAttribute('aria-label',theme==='dark'?'Schakel naar lichte weergave':'Schakel naar donkere weergave');
+    }
   };
-  const actions = document.querySelector('.actions');
-  if(actions && !document.getElementById('themeToggle')){
-    actions.appendChild(btn);
+  apply(stored()||(mq?.matches?'dark':'light'));
+  mq?.addEventListener?.('change',event=>{if(!stored())apply(event.matches?'dark':'light');});
+  const actions=document.querySelector('.actions');
+  if(actions&&!$('themeToggle')){
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.id='themeToggle';
+    btn.className='theme-toggle';
+    btn.addEventListener('click',()=>{
+      const next=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+      apply(next);
+      try{localStorage.setItem('netwerkkompas-theme',next);}catch{}
+    });
+    actions.append(btn);
+    apply(stored()||(mq?.matches?'dark':'light'));
   }
 }
 initTheme();
 
-// Geavanceerd tab - extra functies
+// ---------- Hulpfuncties ----------
+function addNavLink(href,icon,label){
+  const nav=document.querySelector('nav');
+  if(!nav||document.querySelector('nav a[href="'+href+'"]'))return;
+  const a=document.createElement('a');
+  a.href=href;
+  a.append(icon+' ');
+  const span=document.createElement('span');
+  span.textContent=label;
+  a.append(span);
+  nav.append(a);
+}
+
+function toolRow(label,value,warn){
+  const row=document.createElement('div');
+  row.className='toolrow'+(warn?' warn':'');
+  const key=document.createElement('strong');
+  key.textContent=label;
+  const val=document.createElement('span');
+  val.textContent=value;
+  row.append(key,val);
+  return row;
+}
+
+function advMedian(values){
+  if(!values.length)return null;
+  const sorted=[...values].sort((a,b)=>a-b);
+  const mid=Math.floor(sorted.length/2);
+  return sorted.length%2?sorted[mid]:Math.round((sorted[mid-1]+sorted[mid])/2);
+}
+
+function meanDelta(values){
+  if(values.length<2)return null;
+  let sum=0;
+  for(let i=1;i<values.length;i++)sum+=Math.abs(values[i]-values[i-1]);
+  return Math.round(sum/(values.length-1));
+}
+
+const ADV_TARGETS=[
+  {name:'Cloudflare',url:()=>'https://speed.cloudflare.com/__down?bytes=0&n='+Date.now()},
+  {name:'Google DNS',url:()=>'https://dns.google/resolve?name=example.com&type=A'},
+  {name:'Cloudflare trace',url:()=>'https://speed.cloudflare.com/cdn-cgi/trace'}
+];
+
+const DNS_RESOLVERS=[
+  {name:'Google',url:host=>'https://dns.google/resolve?name='+encodeURIComponent(host)+'&type=A'},
+  {name:'Cloudflare',url:host=>'https://cloudflare-dns.com/dns-query?name='+encodeURIComponent(host)+'&type=A',headers:{Accept:'application/dns-json'}}
+];
+
+const ADV_COMMANDS={
+  linux:[
+    ['Route en gateway','Toon de actieve routes en standaardgateway.','ip route'],
+    ['Traceroute','Toon de route naar Cloudflare.','traceroute -n 1.1.1.1'],
+    ['MTR','Herhaalde traceroute met latentie per hop.','mtr -rw 1.1.1.1'],
+    ['DNS-resolvers','Toon de DNS-servers van dit systeem.','resolvectl status | head -25']
+  ],
+  windows:[
+    ['Netwerkconfiguratie','Toon IPv4, gateway en DNS-servers.','ipconfig /all'],
+    ['Traceroute','Toon de route naar Cloudflare.','tracert -d 1.1.1.1'],
+    ['Pathping','Route met latentie per hop.','pathping 1.1.1.1'],
+    ['DNS-servers','Toon de ingestelde DNS-servers.','ipconfig /all | findstr /i "DNS"']
+  ],
+  mac:[
+    ['Route en gateway','Toon de standaardgateway.','route -n get default'],
+    ['Traceroute','Toon de route naar Cloudflare.','traceroute -n 1.1.1.1'],
+    ['DNS-resolvers','Toon de DNS-configuratie.','scutil --dns | head -30']
+  ]
+};
+
+// ---------- Geavanceerd ----------
 function addAdvancedSection(){
-  if(document.getElementById('geavanceerd')) return;
-  const main = document.querySelector('main');
-  const section = document.createElement('section');
-  section.className = 'panel';
-  section.id = 'geavanceerd';
-  section.innerHTML = `
-    <div class="sectionhead"><div><h2>Geavanceerd</h2><p>Extra netwerktools en analyses</p></div><span class="pill">Uitgebreid</span></div>
-    <div class="columns">
-      <section class="panel">
-        <h3>Uitgebreide Speedtest</h3>
-        <p>Multi-verbindingen voor nauwkeurigere meting van download/upload</p>
-        <button id="advSpeed">Start uitgebreide speedtest</button>
-        <div id="advSpeedResult" style="margin-top:10px;font-size:13px"></div>
+  if(document.getElementById('geavanceerd'))return;
+  const section=document.createElement('section');
+  section.className='panel';
+  section.id='geavanceerd';
+  section.innerHTML=`
+    <div class="sectionhead"><div><h2>Geavanceerd</h2><p>Extra metingen en hulpmiddelen. Een browser kan alleen HTTP-verkeer meten.</p></div><span class="pill">Vrijwillig</span></div>
+    <div class="toolgrid">
+      <section class="toolcard">
+        <h3>Downloadmeting</h3>
+        <p>Drie parallelle downloads van 10 MB. Samen een indicatie van je downloadsnelheid.</p>
+        <button id="advSpeed" type="button">Start downloadmeting</button>
+        <div id="advSpeedResult" class="toolresult" role="status" aria-live="polite">Nog niet gemeten.</div>
       </section>
-      <section class="panel">
-        <h3>Ping & Latentie</h3>
-        <p>Continue ping naar meerdere hosts</p>
-        <button id="pingTest">Start ping-test</button>
-        <div id="pingResult" style="margin-top:10px;font-size:13px"></div>
+      <section class="toolcard">
+        <h3>Uploadmeting</h3>
+        <p>Verstuurt 5 MB naar Cloudflare. Dit verbruikt mobiele data.</p>
+        <button id="advUp" type="button">Start uploadmeting</button>
+        <div id="advUpResult" class="toolresult" role="status" aria-live="polite">Nog niet gemeten.</div>
       </section>
-    </div>
-    <div class="columns">
-      <section class="panel">
-        <h3>Port Scanner (beperkt)</h3>
-        <p>Controleer veelvoorkomende poorten (alleen lokaal testbaar)</p>
-        <button id="portScan">Scan algemene poorten</button>
-        <div id="portResult" style="margin-top:10px;font-size:13px"></div>
+      <section class="toolcard">
+        <h3>HTTP-latentie en jitter</h3>
+        <p>Vijf aanvragen per meetpunt. Dit is HTTP-responstijd, geen ICMP-ping.</p>
+        <button id="pingTest" type="button">Meet latentie</button>
+        <div id="pingResult" class="toolresult" role="status" aria-live="polite">Nog niet gemeten.</div>
       </section>
-      <section class="panel">
-        <h3>Traceroute (simulatie)</h3>
-        <p>Route naar doelhost visualiseren</p>
-        <input id="traceHost" placeholder="voorbeeld.com" style="width:60%;margin-right:5px">
-        <button id="traceBtn">Trace route</button>
-        <div id="traceResult" style="margin-top:10px;font-size:13px"></div>
+      <section class="toolcard">
+        <h3>DNS-resolvers vergelijken</h3>
+        <p>Vraagt hetzelfde domein op bij Google en Cloudflare. Dit test niet de DNS-server van je apparaat.</p>
+        <div class="inputrow"><input id="dnsLookup" placeholder="example.com" autocomplete="off" aria-label="Domeinnaam voor DNS-vergelijking"><button id="dnsLookupBtn" type="button">Vergelijk</button></div>
+        <div id="dnsLookupResult" class="toolresult" role="status" aria-live="polite">Nog niet opgevraagd.</div>
       </section>
-    </div>
-    <div class="columns">
-      <section class="panel">
-        <h3>Jitter & Packet Loss</h3>
-        <p>Stabiliteit van je verbinding meten</p>
-        <button id="jitterTest">Meet jitter</button>
-        <div id="jitterResult" style="margin-top:10px;font-size:13px"></div>
+      <section class="toolcard wide">
+        <h3>Router en traceroute</h3>
+        <p>Een browser kan geen traceroute uitvoeren. Deze opdrachten lezen alleen uit en veranderen niets.</p>
+        <div class="inlinefield"><label for="advOs">Besturingssysteem</label><select id="advOs"><option value="linux">Linux / ParrotOS</option><option value="windows">Windows</option><option value="mac">macOS</option></select></div>
+        <div id="advCommands"></div>
       </section>
-      <section class="panel">
-        <h3>DNS Lookup</h3>
-        <p>DNS-resolutie testen voor meerdere DNS-servers</p>
-        <input id="dnsLookup" placeholder="example.com" style="width:60%;margin-right:5px">
-        <button id="dnsLookupBtn">DNS Lookup</button>
-        <div id="dnsLookupResult" style="margin-top:10px;font-size:13px"></div>
+      <section class="toolcard wide">
+        <h3>Wat je browser over de verbinding meldt</h3>
+        <div id="netInfo" class="toolresult"></div>
+        <p class="micro">Deze waarden zijn schattingen van de browser en bewijzen niet welk netwerk of welke provider actief is.</p>
       </section>
     </div>
-    <div class="panel">
-      <h3>Netwerk Overzicht</h3>
-      <div id="netInfo" style="font-size:13px;line-height:1.8"></div>
-    </div>
+    <p class="micro">Geen echte ping, traceroute, poortscan of wifi-scan: browsers blokkeren die metingen. Gebruik daarvoor de opdrachten hierboven op je eigen systeem.</p>
   `;
   document.querySelector('footer').before(section);
-  
-  // Add nav link
-  if(!document.querySelector('nav a[href="#geavanceerd"]')){
-    const nav = document.querySelector('nav');
-    const a = document.createElement('a');
-    a.href = '#geavanceerd';
-    a.innerHTML = '⚡ <span>Geavanceerd</span>';
-    nav.appendChild(a);
+  addNavLink('#geavanceerd','⚡','Geavanceerd');
+
+  function renderNetInfo(){
+    const out=$('netInfo');
+    if(!out)return;
+    const connection=navigator.connection||{};
+    const rows=[
+      ['Browser',navigator.userAgent],
+      ['Online volgens browser',navigator.onLine?'ja':'nee'],
+      ['Taal',navigator.language],
+      ['Netwerktype (schatting)',connection.effectiveType||'onbekend'],
+      ['Geschatte downlink',connection.downlink!=null?connection.downlink+' Mbit/s':'onbekend'],
+      ['Geschatte RTT',connection.rtt!=null?connection.rtt+' ms':'onbekend'],
+      ['Databesparing',connection.saveData?'aan':'nee'],
+      ['CPU-threads',navigator.hardwareConcurrency||'onbekend'],
+      ['Apparaatgeheugen',navigator.deviceMemory?'~'+navigator.deviceMemory+' GB':'onbekend'],
+      ['Scherm',`${screen.width} × ${screen.height} @ ${window.devicePixelRatio||1}x`],
+      ['Tijdzone',Intl.DateTimeFormat().resolvedOptions().timeZone||'onbekend']
+    ];
+    out.replaceChildren(...rows.map(([label,value])=>toolRow(label,value)));
   }
-  
-  // Network info
-  function updateNetInfo(){
-    const info = [];
-    info.push('User Agent: ' + navigator.userAgent);
-    info.push('Online: ' + navigator.onLine);
-    info.push('Taal: ' + navigator.language);
-    if(navigator.connection){
-      info.push('Connectie type: ' + (navigator.connection.effectiveType||'onbekend'));
-      info.push('Downlink: ' + (navigator.connection.downlink||'onbekend') + ' Mbps');
-      info.push('RTT: ' + (navigator.connection.rtt||'onbekend') + ' ms');
-    }
-    if(navigator.hardwareConcurrency) info.push('CPU cores: ' + navigator.hardwareConcurrency);
-    if(navigator.deviceMemory) info.push('Geheugen: ~' + navigator.deviceMemory + ' GB');
-    document.getElementById('netInfo').innerHTML = info.map(i=>'<div>'+i+'</div>').join('');
+  renderNetInfo();
+  navigator.connection?.addEventListener?.('change',renderNetInfo);
+
+  $('advSpeed').addEventListener('click',async()=>{
+    const btn=$('advSpeed'),out=$('advSpeedResult');
+    btn.disabled=true;out.textContent='Bezig met downloaden…';
+    try{
+      const streams=3,bytes=10000000,stamp=Date.now();
+      const started=performance.now();
+      const parts=await Promise.all(Array.from({length:streams},(_,i)=>request(`https://speed.cloudflare.com/__down?bytes=${bytes}&n=${stamp}-${i}`,'bytes',60000)));
+      const ms=performance.now()-started;
+      const good=parts.filter(part=>part.ok);
+      const total=good.reduce((sum,part)=>sum+(part.body?.byteLength||0),0);
+      if(!good.length||ms<=0){
+        out.replaceChildren(toolRow('Resultaat','niet meetbaar: '+(parts.find(part=>!part.ok)?.error||'onbekende fout'),true));
+        return;
+      }
+      out.replaceChildren(
+        toolRow('Downloadsnelheid',(total*8/(ms/1000)/1e6).toFixed(1)+' Mbit/s'),
+        toolRow('Ontvangen',(total/1e6).toFixed(1)+' MB in '+(ms/1000).toFixed(1)+' s'),
+        toolRow('Streams',good.length+' / '+streams,good.length<streams)
+      );
+    }finally{btn.disabled=false;}
+  });
+
+  $('advUp').addEventListener('click',async()=>{
+    const btn=$('advUp'),out=$('advUpResult');
+    btn.disabled=true;out.textContent='Bezig met uploaden…';
+    const size=5000000;
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),60000);
+    try{
+      const started=performance.now();
+      const response=await fetch('https://speed.cloudflare.com/__up',{method:'POST',body:new Uint8Array(size),cache:'no-store',credentials:'omit',referrerPolicy:'no-referrer',signal:controller.signal});
+      const ms=performance.now()-started;
+      if(!response.ok)throw new Error('HTTP '+response.status);
+      try{await response.arrayBuffer();}catch{}
+      out.replaceChildren(
+        toolRow('Uploadsnelheid',(size*8/(ms/1000)/1e6).toFixed(1)+' Mbit/s'),
+        toolRow('Verstuurd',(size/1e6).toFixed(1)+' MB in '+(ms/1000).toFixed(1)+' s'),
+        toolRow('Let op','één meting; serververwerking kan meetellen',true)
+      );
+    }catch(error){
+      out.replaceChildren(toolRow('Resultaat',error.name==='AbortError'?'timeout':'niet meetbaar: '+error.message,true));
+    }finally{clearTimeout(timer);btn.disabled=false;}
+  });
+
+  $('pingTest').addEventListener('click',async()=>{
+    const btn=$('pingTest'),out=$('pingResult');
+    btn.disabled=true;out.textContent='Bezig met meten…';
+    const samples=new Map(ADV_TARGETS.map(target=>[target.name,[]]));
+    let failed=0;
+    try{
+      for(let round=0;round<5;round++){
+        const results=await Promise.all(ADV_TARGETS.map(async target=>{
+          const result=await request(target.url(),'bytes',6000);
+          return {name:target.name,ok:result.ok,ms:result.ms};
+        }));
+        results.forEach(result=>{
+          if(result.ok)samples.get(result.name).push(result.ms);
+          else failed++;
+        });
+      }
+      const rows=ADV_TARGETS.map(target=>{
+        const values=samples.get(target.name);
+        if(!values.length)return toolRow(target.name,'geen geldige meting',true);
+        const jitter=meanDelta(values);
+        return toolRow(target.name,`mediaan ${advMedian(values)} ms · min ${Math.min(...values)} · max ${Math.max(...values)}${jitter===null?'':' · jitter '+jitter+' ms'}`);
+      });
+      rows.push(toolRow('Mislukte aanvragen',String(failed),failed>0));
+      out.replaceChildren(...rows);
+    }finally{btn.disabled=false;}
+  });
+
+  $('dnsLookupBtn').addEventListener('click',async()=>{
+    const btn=$('dnsLookupBtn'),out=$('dnsLookupResult');
+    let host;
+    try{host=validDomain($('dnsLookup').value);}catch(error){out.replaceChildren(toolRow('Ongeldig domein',error.message,true));return;}
+    btn.disabled=true;out.textContent='Opvragen…';
+    try{
+      const results=await Promise.all(DNS_RESOLVERS.map(async resolver=>{
+        const result=await request(resolver.url(host),'json',8000,resolver.headers||null);
+        return {name:resolver.name,result};
+      }));
+      const answerSets=[];
+      const rows=results.map(({name,result})=>{
+        if(!result.ok)return toolRow(name,'niet meetbaar: '+result.error,true);
+        const body=result.body||{};
+        if(body.Status===3)return toolRow(name,'domein niet gevonden (NXDOMAIN)',true);
+        if(body.Status!==0)return toolRow(name,'foutcode '+body.Status,true);
+        const addresses=(body.Answer||[]).filter(answer=>answer&&answer.type===1).map(answer=>answer.data);
+        answerSets.push([...addresses].sort().join(','));
+        return toolRow(name,addresses.length?addresses.join(', '):'geen IPv4-adres');
+      });
+      if(answerSets.length===2&&answerSets[0]!==answerSets[1])rows.push(toolRow('Verschil','de resolvers geven verschillende antwoorden; dat kan door geografische DNS of caching',true));
+      out.replaceChildren(...rows);
+    }finally{btn.disabled=false;}
+  });
+
+  function renderAdvCommands(){
+    const box=$('advCommands');
+    if(!box)return;
+    box.replaceChildren();
+    (ADV_COMMANDS[$('advOs').value]||[]).forEach(([title,description,command])=>{
+      const row=document.createElement('div');
+      row.className='commandrow';
+      const text=document.createElement('div');
+      text.textContent=title;
+      const small=document.createElement('small');
+      small.textContent=description;
+      text.append(small);
+      const code=document.createElement('code');
+      code.textContent=command;
+      const copy=document.createElement('button');
+      copy.type='button';
+      copy.textContent='Kopieer';
+      copy.addEventListener('click',async()=>{
+        try{
+          await navigator.clipboard.writeText(command);
+          copy.textContent='Gekopieerd';
+          setTimeout(()=>copy.textContent='Kopieer',2000);
+        }catch{copy.textContent='Selecteer de opdracht';}
+      });
+      row.append(text,code,copy);
+      box.append(row);
+    });
   }
-  updateNetInfo();
-  
-  // Advanced speedtest
-  document.getElementById('advSpeed').onclick = async ()=>{
-    const btn = document.getElementById('advSpeed');
-    btn.disabled = true;
-    const res = document.getElementById('advSpeedResult');
-    res.innerHTML = 'Download meten...';
-    try {
-      const urls = [
-        'https://speed.cloudflare.com/__down?bytes=10000000',
-        'https://speed.cloudflare.com/__down?bytes=10000000'
-      ];
-      const times = [];
-      for(const url of urls){
-        const start = performance.now();
-        const r = await fetch(url + '&n=' + Date.now(), {cache:'no-store'});
-        const buf = await r.arrayBuffer();
-        const end = performance.now();
-        const mbps = (buf.byteLength*8)/((end-start)/1000)/1000000;
-        times.push(mbps);
-      }
-      const avg = times.reduce((a,b)=>a+b)/times.length;
-      res.innerHTML = '<strong>Gemiddeld:</strong> ' + avg.toFixed(2) + ' Mbps<br><small>Download gemiddelde over meerdere metingen</small>';
-    } catch(e){
-      res.innerHTML = 'Fout: ' + e.message;
-    } finally {
-      btn.disabled = false;
-    }
-  };
-  
-  // Ping test
-  document.getElementById('pingTest').onclick = async ()=>{
-    const btn = document.getElementById('pingTest');
-    btn.disabled = true;
-    const res = document.getElementById('pingResult');
-    res.innerHTML = 'Pingen...';
-    const hosts = ['https://1.1.1.1', 'https://8.8.8.8'];
-    let output = '';
-    for(const host of hosts){
-      try {
-        const times = [];
-        for(let i=0;i<3;i++){
-          const start = performance.now();
-          await fetch(host + '/cdn-cgi/trace', {mode:'no-cors', cache:'no-store'});
-          const end = performance.now();
-          times.push(end-start);
-        }
-        const avg = times.reduce((a,b)=>a+b)/times.length;
-        output += host + ': ' + avg.toFixed(0) + 'ms<br>';
-      } catch(e){
-        output += host + ': timeout<br>';
-      }
-    }
-    res.innerHTML = output;
-    btn.disabled = false;
-  };
-  
-  // Port scan (limited)
-  document.getElementById('portScan').onclick = ()=>{
-    const res = document.getElementById('portResult');
-    res.innerHTML = '<small>Alleen client-side - kan geen echte poorten scannen vanuit browser. Gebruik lokale tools.</small><br>Veelvoorkomende: 80, 443, 53, 22, 21, 25, 3389';
-  };
-  
-  // Traceroute
-  document.getElementById('traceBtn').onclick = async ()=>{
-    const host = document.getElementById('traceHost').value.trim();
-    if(!host) return;
-    const res = document.getElementById('traceResult');
-    res.innerHTML = 'Traceroute simulatie naar ' + host + '...<br>';
-    for(let i=1;i<=8;i++){
-      await new Promise(r=>setTimeout(r,200));
-      res.innerHTML += i + '. * * * ' + (Math.random()*50+10).toFixed(1) + 'ms<br>';
-    }
-    res.innerHTML += '<small>Let op: Echte traceroute niet mogelijk in browser</small>';
-  };
-  
-  // Jitter
-  document.getElementById('jitterTest').onclick = async ()=>{
-    const btn = document.getElementById('jitterTest');
-    btn.disabled = true;
-    const res = document.getElementById('jitterResult');
-    res.innerHTML = 'Meten...';
-    const times = [];
-    for(let i=0;i<10;i++){
-      const start = performance.now();
-      await fetch('https://www.google.com/generate_204', {mode:'no-cors', cache:'no-store'});
-      times.push(performance.now()-start);
-      await new Promise(r=>setTimeout(r,100));
-    }
-    const avg = times.reduce((a,b)=>a+b)/times.length;
-    const variance = times.reduce((a,b)=>a+Math.pow(b-avg,2),0)/times.length;
-    const jitter = Math.sqrt(variance);
-    res.innerHTML = '<strong>Gemiddelde RTT:</strong> ' + avg.toFixed(1) + 'ms<br><strong>Jitter:</strong> ' + jitter.toFixed(1) + 'ms<br><small>Hoger jitter = minder stabiele verbinding</small>';
-    btn.disabled = false;
-  };
-  
-  // DNS lookup
-  document.getElementById('dnsLookupBtn').onclick = async ()=>{
-    const host = document.getElementById('dnsLookup').value.trim();
-    if(!host) return;
-    const res = document.getElementById('dnsLookupResult');
-    res.innerHTML = 'Zoeken...';
-    try {
-      const r = await fetch('https://dns.google/resolve?name=' + encodeURIComponent(host) + '&type=A');
-      const data = await r.json();
-      if(data.Answer){
-        res.innerHTML = data.Answer.map(a=>a.data).join('<br>');
-      } else {
-        res.innerHTML = 'Geen antwoord';
-      }
-    } catch(e){
-      res.innerHTML = 'Fout: ' + e.message;
-    }
-  };
+  $('advOs').addEventListener('change',renderAdvCommands);
+  renderAdvCommands();
 }
 
-if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', addAdvancedSection);
-} else {
-  addAdvancedSection();
-}
+// ---------- Klachten ----------
+const PROVIDERS={
+  kpn:{name:'KPN',url:'https://www.kpn.com/klantenservice/',note:'Klachten verlopen via de klantenservice van KPN.'},
+  ziggo:{name:'Ziggo',url:'https://www.ziggo.nl/klantenservice/contact/klacht',note:'Gebruik bij voorkeur het online klachtenformulier van Ziggo.'},
+  odido:{name:'Odido (voorheen T-Mobile)',url:'https://www.odido.nl/klantenservice',note:'Odido is de nieuwe naam van T-Mobile Nederland.'},
+  vodafone:{name:'Vodafone',url:'https://www.vodafone.nl/klantenservice/contact',note:''},
+  online:{name:'Online.nl',url:'https://www.online.nl/',note:''},
+  freedom:{name:'Freedom Internet',url:'https://freedom.nl/',note:''},
+  youfone:{name:'Youfone',url:'https://www.youfone.nl/',note:''},
+  ben:{name:'BEN',url:'https://www.ben.nl/',note:''},
+  solcon:{name:'Solcon',url:'https://www.solcon.nl/',note:''},
+  delta:{name:'Delta',url:'https://www.delta.nl/klantenservice/',note:''},
+  caiway:{name:'Caiway',url:'https://www.caiway.nl/',note:''},
+  kabelnoord:{name:'Kabelnoord',url:'https://www.kabelnoord.nl/',note:''},
+  other:{name:'Andere provider',url:'',note:'Zoek op de website of factuur van je provider naar het klachtenformulier of de klachtenprocedure.'}
+};
 
-// Klachten indienen bij Nederlandse internetproviders
+const PROVIDER_GROUPS=[
+  {label:'Landelijk',keys:['kpn','ziggo','odido','vodafone','online','freedom','youfone','ben','solcon']},
+  {label:'Regionaal en kabel',keys:['delta','caiway','kabelnoord']},
+  {label:'Anders',keys:['other']}
+];
+
 function addComplaintSection(){
-  if(document.getElementById('klachten')) return;
-  const main = document.querySelector('main');
-  const section = document.createElement('section');
-  section.className = 'panel';
-  section.id = 'klachten';
-  section.innerHTML = `
-    <div class="sectionhead"><div><h2>Klachten indienen bij Nederlandse providers</h2><p>Genereer een klacht op basis van je meetresultaten en dien direct in</p></div><span class="pill">Geautomatiseerd</span></div>
-    <div class="panel" style="background:#fff3cd;border-color:#ffc107;margin-bottom:15px">
-      <strong>Tip:</strong> Voeg je meetresultaten toe voor een sterkere klacht. Gebruik de meetrapporten uit het tabblad "Meetrapport".
-    </div>
+  if(document.getElementById('klachten'))return;
+  const section=document.createElement('section');
+  section.className='panel';
+  section.id='klachten';
+  section.innerHTML=`
+    <div class="sectionhead"><div><h2>Klacht indienen</h2><p>Stel een klacht op met je meetresultaten en open de klachtenpagina van je provider.</p></div><span class="pill">Concept</span></div>
+    <div class="callout"><strong>Zo werkt het:</strong> NetwerkKompas verstuurt niets. Je kopieert de klacht zelf naar het formulier of de e-mail van je provider. Voeg waar mogelijk je klantnummer en eerdere storingsmeldingen toe.</div>
     <div class="columns">
-      <section class="panel">
-        <h3>Kies je provider</h3>
-        <select id="providerSelect" style="width:100%;margin-bottom:10px">
-          <option value="">Selecteer provider...</option>
-          <optgroup label="Grote providers">
-            <option value="kpn">KPN</option>
-            <option value="ziggo">Ziggo (VodafoneZiggo)</option>
-            <option value="vodafone">Vodafone</option>
-            <option value="tmobile">T-Mobile</option>
-            <option value="odido">Odido</option>
-          </optgroup>
-          <optgroup label="Regionale providers">
-            <option value="delta">Delta</option>
-            <option value="caiw">CAIW</option>
-            <option value="kabelnoord">Kabelnoord</option>
-            <option value="stichtingkabeltexel">Kabel Texel</option>
-            <option value="solcon">Solcon</option>
-            <option value="youfone">Youfone</option>
-            <option value="ben">BEN</option>
-            <option value="leape">Leaphone / andere</option>
-          </optgroup>
-        </select>
-        <label>Type storing</label>
-        <select id="complaintType" style="width:100%;margin-bottom:10px">
-          <option value="slow">Trage verbinding</option>
-          <option value="drops">Verbinding valt weg</option>
-          <option value="offline">Geen internet</option>
-          <option value="other">Anders</option>
-        </select>
-        <label>Klacht omschrijving</label>
-        <textarea id="complaintText" rows="6" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:7px;font-family:inherit" placeholder="Beschrijf je probleem..."></textarea>
-        <label style="display:flex;align-items:center;gap:8px;margin-top:10px">
-          <input type="checkbox" id="includeMeasurements" checked> Voeg meetresultaten toe aan klacht
-        </label>
-        <button id="generateComplaint" style="margin-top:10px;width:100%" class="primary">Genereer klacht</button>
+      <section class="toolcard">
+        <h3>Jouw klacht</h3>
+        <div class="field"><label for="providerSelect">Provider</label><select id="providerSelect"><option value="">Selecteer een provider…</option></select></div>
+        <div class="field"><label for="complaintType">Soort probleem</label><select id="complaintType"><option value="slow">Trage verbinding</option><option value="drops">Verbinding valt weg</option><option value="offline">Geen internet</option><option value="other">Anders</option></select></div>
+        <div class="field"><label for="complaintText">Wat merk je? (optioneel)</label><textarea id="complaintText" rows="5" maxlength="1500" placeholder="Bijvoorbeeld: sinds drie dagen valt de verbinding elke avond weg."></textarea></div>
+        <label class="checkline" for="includeMeasurements"><input type="checkbox" id="includeMeasurements" checked> Meetresultaten uit deze sessie toevoegen</label>
+        <div class="buttonrow"><button id="generateComplaint" type="button" class="primary">Genereer klacht</button></div>
+        <p id="complaintStatus" class="micro" role="status" aria-live="polite"></p>
       </section>
-      <section class="panel">
-        <h3>Contactgegevens provider</h3>
-        <div id="providerInfo" style="font-size:13px;line-height:1.8">
-          <p style="color:#666">Selecteer een provider om contactgegevens te zien</p>
-        </div>
-        <div id="complaintOutput" style="margin-top:15px;display:none">
-          <h4>Gegenereerde klacht</h4>
-          <textarea id="complaintResult" rows="12" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:7px;font-family:inherit;font-size:12px"></textarea>
-          <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
-            <button id="copyComplaint">Kopieer klacht</button>
-            <button id="openForm">Open klachtenformulier</button>
-            <button id="sendEmail">Verstuur via e-mail</button>
+      <section class="toolcard">
+        <h3>Klachtenkanaal</h3>
+        <div id="providerInfo" class="provider-card">Selecteer een provider om het klachtenkanaal te zien.</div>
+        <div id="complaintOutput" hidden>
+          <div class="field"><label for="complaintResult">Conceptklacht</label><textarea id="complaintResult" class="complaint-text" rows="14" readonly></textarea></div>
+          <div class="buttonrow">
+            <button id="copyComplaint" type="button">Kopieer</button>
+            <button id="downloadComplaint" type="button">Download .txt</button>
+            <button id="openForm" type="button">Open klachtenpagina</button>
           </div>
+          <p class="micro">Controleer het concept en vul je eigen gegevens in voordat je het verstuurt.</p>
         </div>
       </section>
     </div>
-    <div class="panel">
-      <h3>ACM & Geschillencommissie</h3>
-      <p style="font-size:13px">Als je provider niet adequaat reageert kun je hulp inschakelen:</p>
-      <ul style="font-size:13px;line-height:1.8">
-        <li><strong>ACM ConsuWijzer:</strong> <a href="https://www.consuwijzer.nl/" target="_blank">consuwijzer.nl</a> - Gratis hulp bij geschillen met telecomproviders</li>
-        <li><strong>Geschillencommissie Telecommunicatie:</strong> Voor bindende geschillen onder bepaalde voorwaarden</li>
-        <li><strong>Autoriteit Consument & Markt (ACM):</strong> Meld excessieve vertragingen of contractbreuk</li>
+    <section class="toolcard wide">
+      <h3>Als je er niet uitkomt</h3>
+      <ul class="escalation">
+        <li><a href="https://www.consuwijzer.nl/" target="_blank" rel="noopener noreferrer">ACM ConsuWijzer</a> geeft gratis uitleg over je rechten bij internet- en telecomproblemen.</li>
+        <li><a href="https://www.degeschillencommissie.nl/" target="_blank" rel="noopener noreferrer">Geschillencommissie</a>: een geschil indienen kan meestal pas nadat je de klachtenprocedure van je provider hebt doorlopen. Bewaar je correspondentie.</li>
+        <li><a href="https://www.acm.nl/" target="_blank" rel="noopener noreferrer">Autoriteit Consument &amp; Markt</a> houdt toezicht op de telecommarkt; een melding daar vervangt geen individuele klacht.</li>
       </ul>
-    </div>
+      <p class="micro">NetwerkKompas is geen juridisch adviseur en heeft geen invloed op de afhandeling van je klacht.</p>
+    </section>
   `;
   document.querySelector('footer').before(section);
-  
-  // Add nav link
-  if(!document.querySelector('nav a[href="#klachten"]')){
-    const nav = document.querySelector('nav');
-    const a = document.createElement('a');
-    a.href = '#klachten';
-    a.innerHTML = '📢 <span>Klachten</span>';
-    nav.appendChild(a);
-  }
-  
-  const providers = {
-    kpn: {
-      name: 'KPN',
-      form: 'https://www.kpn.com/klantenservice/contact/klacht-indienen.htm',
-      email: 'klachten@kpn.com',
-      phone: '0800 0444',
-      info: '<strong>Klachtenlijn:</strong> 0800 0444<br><strong>Online:</strong> Via KPN klantenservice<br><strong>Tip:</strong> Gebruik eerst je MijnKPN account'
-    },
-    ziggo: {
-      name: 'Ziggo',
-      form: 'https://www.ziggo.nl/klantenservice/contact/klacht',
-      email: 'klachten@ziggo.nl',
-      phone: '0800 0944',
-      info: '<strong>Klachtenlijn:</strong> 0800 0944<br><strong>Online:</strong> Via MijnZiggo<br><strong>Tip:</strong> Voeg storingsnummer toe indien bekend'
-    },
-    vodafone: {
-      name: 'Vodafone',
-      form: 'https://www.vodafone.nl/klantenservice/contact/klacht-indienen',
-      email: 'klachten@vodafone.nl',
-      phone: '0800 0700',
-      info: '<strong>Klachtenlijn:</strong> 0800 0700<br><strong>Online:</strong> Via Vodafone klantenservice'
-    },
-    tmobile: {
-      name: 'T-Mobile',
-      form: 'https://www.t-mobile.nl/klantenservice/contact/klacht-indienen',
-      email: 'klachten@t-mobile.nl',
-      phone: '0800 0333',
-      info: '<strong>Klachtenlijn:</strong> 0800 0333<br><strong>Online:</strong> Via MijnT-Mobile'
-    },
-    odido: {
-      name: 'Odido',
-      form: 'https://www.odido.nl/klantenservice/contact/klacht',
-      email: 'klachten@odido.nl',
-      phone: '0800 0202',
-      info: '<strong>Klachtenlijn:</strong> 0800 0202<br><strong>Online:</strong> Via Odido klantenservice'
-    },
-    delta: {
-      name: 'Delta',
-      form: 'https://www.delta.nl/klantenservice/klacht-indienen',
-      email: 'klachten@delta.nl',
-      phone: '088 366 0000',
-      info: '<strong>Telefoon:</strong> 088 366 0000<br><strong>Online:</strong> Via Delta klantenservice'
-    },
-    caiw: {
-      name: 'CAIW',
-      form: 'https://www.caiw.nl/contact/klacht',
-      email: 'klachten@caiw.nl',
-      phone: '075 621 2121',
-      info: '<strong>Telefoon:</strong> 075 621 2121'
-    },
-    kabelnoord: {
-      name: 'Kabelnoord',
-      form: 'https://www.kabelnoord.nl/klantenservice/klacht',
-      email: 'klachten@kabelnoord.nl',
-      phone: '0591 696 000',
-      info: '<strong>Telefoon:</strong> 0591 696 000'
-    },
-    solcon: {
-      name: 'Solcon',
-      form: 'https://www.solcon.nl/contact/klacht-indienen',
-      email: 'klachten@solcon.nl',
-      phone: '0570 660 000',
-      info: '<strong>Telefoon:</strong> 0570 660 000'
-    },
-    youfone: {
-      name: 'Youfone',
-      form: 'https://www.youfone.nl/service/contact',
-      email: 'klachten@youfone.nl',
-      phone: '085 888 0000',
-      info: '<strong>Telefoon:</strong> 085 888 0000'
-    },
-    ben: {
-      name: 'BEN',
-      form: 'https://www.ben.nl/service/contact',
-      email: 'klachten@ben.nl',
-      phone: '0800 023 23 23',
-      info: '<strong>Telefoon:</strong> 0800 023 23 23'
-    },
-    leape: {
-      name: 'Andere provider',
-      form: '#',
-      email: '',
-      phone: '',
-      info: '<strong>Tip:</strong> Kijk op je factuur of website van je provider voor het juiste klachtenkanaal'
-    }
-  };
-  
-  document.getElementById('providerSelect').onchange = ()=>{
-    const val = document.getElementById('providerSelect').value;
-    const infoDiv = document.getElementById('providerInfo');
-    if(!val || !providers[val]){
-      infoDiv.innerHTML = '<p style="color:#666">Selecteer een provider om contactgegevens te zien</p>';
-      return;
-    }
-    const p = providers[val];
-    infoDiv.innerHTML = `
-      <strong>${p.name}</strong><br><br>
-      ${p.info}<br><br>
-      ${p.email ? '<strong>E-mail:</strong> ' + p.email + '<br>' : ''}
-      ${p.phone ? '<strong>Telefoon:</strong> ' + p.phone + '<br>' : ''}
-      ${p.form && p.form !== '#' ? '<a href="'+p.form+'" target="_blank">Open klachtenformulier →</a>' : ''}
-    `;
-    infoDiv.dataset.form = p.form;
-    infoDiv.dataset.email = p.email;
-    infoDiv.dataset.name = p.name;
-  };
-  
-  document.getElementById('generateComplaint').onclick = ()=>{
-    const provider = document.getElementById('providerSelect').value;
-    const type = document.getElementById('complaintType').value;
-    const userText = document.getElementById('complaintText').value;
-    const includeMeas = document.getElementById('includeMeasurements').checked;
-    
+  addNavLink('#klachten','📢','Klachten');
+
+  const select=$('providerSelect');
+  PROVIDER_GROUPS.forEach(group=>{
+    const optgroup=document.createElement('optgroup');
+    optgroup.label=group.label;
+    group.keys.forEach(key=>{
+      const option=document.createElement('option');
+      option.value=key;
+      option.textContent=PROVIDERS[key].name;
+      optgroup.append(option);
+    });
+    select.append(optgroup);
+  });
+
+  function renderProvider(){
+    const box=$('providerInfo');
+    const provider=PROVIDERS[select.value];
     if(!provider){
-      alert('Selecteer eerst een provider');
+      box.textContent='Selecteer een provider om het klachtenkanaal te zien.';
       return;
     }
-    
-    const pName = providers[provider].name;
-    const typeText = {
-      slow: 'trage verbinding / niet bereikende snelheden',
-      drops: 'regelmatig wegvallende verbinding',
-      offline: 'geen internetverbinding',
-      other: 'netwerkprobleem'
-    };
-    
-    let complaint = `Betreft: Klacht over internetverbinding - ${typeText[type]}\n\n`;
-    complaint += `Beste ${pName},\n\n`;
-    complaint += `Ik schrijf u naar aanleiding van aanhoudende problemen met mijn internetverbinding.\n\n`;
-    if(userText){
-      complaint += `Omschrijving van het probleem:\n${userText}\n\n`;
+    box.replaceChildren();
+    const name=document.createElement('strong');
+    name.textContent=provider.name;
+    box.append(name);
+    if(provider.note){
+      const note=document.createElement('p');
+      note.textContent=provider.note;
+      box.append(note);
     }
-    complaint += `Probleem: ${typeText[type]}\n\n`;
-    
-    if(includeMeas && state.runs && state.runs.length > 0){
-      complaint += `Meetresultaten (via NetwerkKompas):\n`;
-      const last = state.runs[state.runs.length-1];
-      complaint += `- Datum/tijd: ${new Date(last.time).toLocaleString('nl-NL')}\n`;
-      complaint += `- HTTP mediaan: ${last.median || 'n/b'} ms\n`;
-      complaint += `- Geslaagde checks: ${last.probes.filter(p=>p.ok).length}/${last.probes.length}\n`;
-      complaint += `- Verbindingslabel: ${last.label || 'Onbekend'}\n`;
-      complaint += `\nIk heb deze metingen zelf uitgevoerd met een onafhankelijke meettool om de problemen te documenteren.\n\n`;
+    if(provider.url){
+      const link=document.createElement('a');
+      link.href=provider.url;
+      link.target='_blank';
+      link.rel='noopener noreferrer';
+      link.textContent='Open klachtenpagina ↗';
+      const line=document.createElement('p');
+      line.append(link);
+      box.append(line);
     }
-    
-    complaint += `Ik verzoek u om dit probleem te onderzoeken en op te lossen binnen een redelijke termijn.\n`;
-    complaint += `Indien het probleem niet binnen 14 dagen is opgelost, verzoek ik u om dit formeel op te nemen als klacht en mij te informeren over de voortgang.\n\n`;
-    complaint += `Met vriendelijke groet,\n[Uw volledige naam]\n[Uw adres]\n[Uw postcode en plaats]\n[Uw klantnummer]\n[Uw e-mailadres]\n[Uw telefoonnummer]`;
-    
-    document.getElementById('complaintResult').value = complaint;
-    document.getElementById('complaintOutput').style.display = 'block';
-    document.getElementById('complaintOutput').scrollIntoView({behavior:'smooth', block:'nearest'});
-  };
-  
-  document.getElementById('copyComplaint').onclick = async ()=>{
-    const text = document.getElementById('complaintResult').value;
-    try {
-      await navigator.clipboard.writeText(text);
-      document.getElementById('copyComplaint').textContent = 'Gekopieerd!';
-      setTimeout(()=>document.getElementById('copyComplaint').textContent='Kopieer klacht', 2000);
-    } catch(e){
-      alert('Kopieer handmatig');
+    const tip=document.createElement('p');
+    tip.className='micro';
+    tip.textContent='Controleer op de providerpagina welk kanaal voor klachten bedoeld is; niet elke contactpagina is een klachtenformulier.';
+    box.append(tip);
+  }
+
+  function measurementSummary(){
+    if(!state.runs.length)return null;
+    const values=state.runs.map(run=>run.median).filter(value=>Number.isFinite(value));
+    const failed=state.runs.filter(run=>run.probes.some(probe=>probe.external&&!probe.ok)).length;
+    const labels=[...new Set(state.runs.map(run=>run.label).filter(Boolean))];
+    const lines=[`- Aantal meetrondes: ${state.runs.length}`];
+    if(values.length)lines.push(`- HTTP-responstijd mediaan: ${Math.min(...values)} tot ${Math.max(...values)} ms`);
+    lines.push(`- Rondes met een mislukt extern meetpunt: ${failed}`);
+    if(labels.length)lines.push(`- Verbinding: ${labels.join(', ')}`);
+    lines.push(`- Periode: ${new Date(state.runs[0].time).toLocaleString('nl-NL')} tot ${new Date(state.runs[state.runs.length-1].time).toLocaleString('nl-NL')}`);
+    return lines.join('\n');
+  }
+
+  function buildComplaint(){
+    const provider=PROVIDERS[select.value];
+    if(!provider)return null;
+    const typeText={slow:'een trage verbinding',drops:'een verbinding die regelmatig wegvalt',offline:'geen internetverbinding',other:'een netwerkprobleem'}[$('complaintType').value]||'een netwerkprobleem';
+    const description=$('complaintText').value.trim();
+    const lines=[];
+    lines.push(`Betreft: klacht over mijn internetverbinding (${typeText})`,'');
+    lines.push(`Geachte klantenservice van ${provider.name},`,'');
+    lines.push(`Ik dien een klacht in over ${typeText} op mijn internetverbinding.`,'');
+    if(description)lines.push('Toelichting:',description,'');
+    if($('includeMeasurements').checked){
+      const summary=measurementSummary();
+      if(summary){
+        lines.push('Metingen met NetwerkKompas (browsertool):',summary,'');
+        lines.push('Dit zijn HTTP-aanvragen vanuit een browser. Het zijn geen ping-, pakketverlies- of volledige snelheidsmetingen en ze wijzen geen specifieke schakel aan. De volledige resultaten kan ik op verzoek sturen.','');
+      }else{
+        lines.push('In deze app staan nog geen meetresultaten; die kan ik later toevoegen.','');
+      }
     }
-  };
-  
-  document.getElementById('openForm').onclick = ()=>{
-    const infoDiv = document.getElementById('providerInfo');
-    const form = infoDiv.dataset.form;
-    if(form && form !== '#'){
-      window.open(form, '_blank');
-    } else {
-      alert('Geen online formulier beschikbaar voor deze provider');
+    lines.push('Ik verzoek u het probleem te onderzoeken en mij te laten weten wat de oorzaak is en wanneer het is opgelost.','');
+    lines.push('Ik verzoek u deze klacht volgens uw klachtenprocedure vast te leggen en mij een schriftelijke reactie te sturen.','');
+    lines.push('Met vriendelijke groet,','','[Naam]','[Adres]','[Postcode en plaats]','[Klantnummer]','[E-mailadres]','[Telefoonnummer]');
+    return lines.join('\n');
+  }
+
+  $('generateComplaint').addEventListener('click',()=>{
+    const status=$('complaintStatus');
+    if(!select.value){
+      status.textContent='Selecteer eerst een provider.';
+      return;
     }
-  };
-  
-  document.getElementById('sendEmail').onclick = ()=>{
-    const infoDiv = document.getElementById('providerInfo');
-    const email = infoDiv.dataset.email;
-    const text = document.getElementById('complaintResult').value;
-    if(email){
-      const subject = encodeURIComponent('Klacht internetverbinding');
-      const body = encodeURIComponent(text);
-      window.location.href = 'mailto:' + email + '?subject=' + subject + '&body=' + body;
-    } else {
-      alert('Geen e-mailadres beschikbaar voor deze provider');
+    $('complaintResult').value=buildComplaint();
+    $('complaintOutput').hidden=false;
+    status.textContent='Concept klaargezet. Controleer de tekst en vul je eigen gegevens in.';
+    $('complaintOutput').scrollIntoView({behavior:'smooth',block:'nearest'});
+  });
+
+  $('copyComplaint').addEventListener('click',async()=>{
+    const btn=$('copyComplaint');
+    try{
+      await navigator.clipboard.writeText($('complaintResult').value);
+      btn.textContent='Gekopieerd';
+      setTimeout(()=>btn.textContent='Kopieer',2000);
+    }catch{
+      $('complaintResult').select();
+      $('complaintStatus').textContent='Automatisch kopiëren lukte niet. De tekst is geselecteerd; kopieer met Ctrl+C of ⌘+C.';
     }
-  };
+  });
+
+  $('downloadComplaint').addEventListener('click',()=>{
+    downloadFile('netwerkkompas-klacht.txt',$('complaintResult').value,'text/plain;charset=utf-8');
+  });
+
+  $('openForm').addEventListener('click',()=>{
+    const provider=PROVIDERS[select.value];
+    if(provider?.url)window.open(provider.url,'_blank','noopener');
+    else $('complaintStatus').textContent='Deze provider heeft geen vaste klachtenpagina in de app. Zoek het klachtenkanaal op de providerwebsite.';
+  });
+
+  select.addEventListener('change',renderProvider);
+  renderProvider();
 }
 
-if(document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', addComplaintSection);
-} else {
+if(document.readyState==='loading'){
+  document.addEventListener('DOMContentLoaded',()=>{addAdvancedSection();addComplaintSection();});
+}else{
+  addAdvancedSection();
   addComplaintSection();
 }
